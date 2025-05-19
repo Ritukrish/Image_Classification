@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Medical Waste Classifier</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --main-color: #152703;
+      --bg-color: #f5f7fa;
+      --accent: #1d0604;
+    }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: var(--bg-color);
+    }
+    .main-btn {
+      background-color: var(--main-color);
+      color: white;
+    }
+    .main-btn:hover {
+      background-color: #8bc34a;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center px-4 py-12">
+
+  <div class="bg-white p-10 rounded-3xl shadow-2xl w-full max-w-2xl space-y-8 border-4 border-green-500">
+    <h1 class="text-4xl font-extrabold text-center text-green-800">🧠 Medical Waste Classifier</h1>
+    <p class="text-center text-gray-600 text-lg">Powered by Vision Transformer (ViT-B-16)</p>
+
+    <div 
+      id="drop-zone"
+      class="border-4 border-dashed border-gray-400 p-6 rounded-xl text-center cursor-pointer hover:bg-gray-100 transition"
+    >
+      <input type="file" id="file-input" accept="image/*" class="hidden">
+      <p class="text-gray-600 font-medium">📁 Click or Drag & Drop an Image</p>
+    </div>
+
+    <div id="preview" class="hidden">
+      <img id="image-preview" src="" alt="Preview" class="w-full h-64 object-contain rounded-lg border-2 border-gray-300 my-4">
+    </div>
+
+    <button 
+      id="classify-btn" 
+      class="main-btn font-bold px-6 py-3 w-full rounded-xl transition disabled:opacity-50"
+      disabled
+    >
+      🚀 Classify Image
+    </button>
+
+    <div id="result" class="hidden">
+  <p class="text-xl font-bold text-center text-white bg-gradient-to-r from-green-500 to-teal-500 p-4 rounded-xl mb-4" id="prediction-result"></p>
+  <div class="bg-gray-100 p-4 rounded-xl shadow-md">
+    <h3 class="text-lg font-semibold text-gray-800 mb-2">🧪 Suggested Disposal Method:</h3>
+    <p class="text-gray-700" id="disposal-suggestion">Loading...</p>
+  </div>
+</div>
+
+  </div>
+
+  <!-- Only keep ONE classify button click handler like this -->
+<script>
+  const dropZone = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('file-input');
+  const imagePreview = document.getElementById('image-preview');
+  const previewContainer = document.getElementById('preview');
+  const classifyBtn = document.getElementById('classify-btn');
+  const resultBox = document.getElementById('result');
+  const predictionResult = document.getElementById('prediction-result');
+  const disposalSuggestion = document.getElementById('disposal-suggestion');
+
+  let uploadedFile = null;
+
+  const disposalMap = {
+    "(BT) Body Tissue or Organ": "Incineration at 1100°C using dual-chamber incinerators with lime wash.",
+    "(GE) Glass equipment-packaging 551": "Autoclaving followed by shredding; use 1% sodium hypochlorite.",
+    "(ME) Metal equipment -packaging": "Sterilize via autoclaving or dry heat. Recycle if non-contaminated.",
+    "(OW) Organic wastes": "Composting under regulated aerobic conditions.",
+    "(PE) Plastic equipment-packaging": "Chemical disinfection using 1% NaOCl and shredding.",
+    "(PP) Paper equipment-packaging": "Autoclaving and recycling; no chemical required unless contaminated.",
+    "(SN) Syringe needles": "Needle cutter & destroyer, then incinerate at 1100°C.",
+    "Gauze": "Microwave treatment or autoclaving. Disinfect with NaOCl before handling.",
+    "Gloves": "Chemical disinfection with 1% sodium hypochlorite followed by shredding.",
+    "Mask": "Autoclave then incinerate; can use NaOCl disinfection for surface decontamination.",
+    "Syringe": "Chemical disinfection then mechanical mutilation; final disposal by incineration.",
+    "Tweezers": "Autoclave and reuse if safe; otherwise disinfect chemically and incinerate.",
+    "Not a medical waste": "Please upload a valid medical waste image. This item doesn't seem to be a recognized category."
+
+  };
+
+  dropZone.addEventListener('click', () => fileInput.click());
+
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('bg-gray-200');
+  });
+
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('bg-gray-200');
+  });
+
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('bg-gray-200');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) {
+      handleImage(file);
+    }
+  });
+
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file && file.type.startsWith('image/')) {
+      handleImage(file);
+    }
+  });
+
+  function handleImage(file) {
+    uploadedFile = file;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      imagePreview.src = e.target.result;
+      previewContainer.classList.remove('hidden');
+      classifyBtn.disabled = false;
+      resultBox.classList.add('hidden');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  classifyBtn.addEventListener('click', async () => {
+    if (!uploadedFile) return;
+
+    const formData = new FormData();
+    formData.append('file', uploadedFile);
+
+    classifyBtn.textContent = "🔎 Classifying...";
+    classifyBtn.disabled = true;
+
+    try {
+      const response = await fetch('/predict', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+      const label = result.prediction;
+
+      predictionResult.textContent = `🧠 Predicted: ${label}`;
+      disposalSuggestion.textContent = disposalMap[label] || "No suggestion available.";
+      resultBox.classList.remove('hidden');
+    } catch (error) {
+      console.error("Error during classification:", error);
+      predictionResult.textContent = "❌ Classification failed. Please try again.";
+      resultBox.classList.remove('hidden');
+    }
+
+    classifyBtn.textContent = "🚀 Classify Image";
+    classifyBtn.disabled = false;
+  });
+</script>
+
+</body>
+</html>
